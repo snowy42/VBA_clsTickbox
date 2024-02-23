@@ -68,6 +68,6 @@ End Sub
 ```
 
 
-### Contributing
+## Contributing
 
 Contributions are welcome!  IF you have suggestions or improvements, feel free to open an issue or submit a pull request.
