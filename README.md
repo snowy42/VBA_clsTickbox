@@ -1,11 +1,11 @@
 # Custom Tickbox VBA Project
 
-This project provides a custom tickbox solution for Microsoft Excel using VBA. The project consists of a class module (`clsTickBox`) and a module (`TickboxModule`) for easy integration into Excel workbooks.
+This project provides a custom tickbox solution for Microsoft Excel using VBA. The project consists of a class module (`clsTickBox`) and a module (`modTickBox`) for easy integration into Excel workbooks.
 
 ## Features
 
 - **Custom Tickbox Class**: The `clsTickBox` class module allows you to create customizable tickboxes within Excel cells.
-- **Easy Integration**: The `TickboxModule` module provides simple subroutines to handle the click event and insert tickboxes in selected cells.
+- **Easy Integration**: The `modTickBox` module provides simple subroutines to handle the click event and insert tickboxes in selected cells.
 
 ## Getting Started
 
@@ -18,11 +18,11 @@ This project provides a custom tickbox solution for Microsoft Excel using VBA. T
 1. Download the project files from the GitHub repository.
 2. Open your Excel workbook.
 3. Press `ALT + F11` to open the Visual Basic for Applications (VBA) editor.
-4. Import both the `clsTickBox` class module and the `TickboxModule` module into your VBA project.
+4. Import both the `clsTickBox` class module and the `modTickBox` module into your VBA project.
 
 ## Usage
 
-### Using the TickboxModule
+### Using the modTickBox
 
 1. Insert a tickbox in the selected cell:
      By default, this is keybound to Ctrl+R for easy use.  This can be changed in the macro menu from the developer tab.
