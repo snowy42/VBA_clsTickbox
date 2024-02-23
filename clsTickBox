@@ -1,0 +1,437 @@
+'==============================================================================
+' Tickbox Class Module: clsTickBox
+'==============================================================================
+' Description: This class module represents a custom tickbox control in Excel. It is designed
+'               to create and manage tickboxes in cells, allowing users to visually toggle
+'               between ticked and unticked states. The class handles the storage of tickbox
+'               states, their appearance, and associated macro functionality.
+' Note: Should be used with the modTickbox module
+' Author: Matthew Snow
+' Version: 1.1
+' Last Modified: 23 Feb 2024
+'==============================================================================
+
+Option Explicit
+
+'=============================================================================
+' Class Variables
+'==============================================================================
+Private untickShp As Shape            ' Shape object for the unticked state
+Private tickShp As Shape              ' Shape object for the ticked state
+Private refCell As Range              ' Reference cell for the tickbox
+Private shpName As String             ' Base name for the tickbox shapes
+Private tickSht As Worksheet          ' Worksheet for storing tickbox states
+Private tickboxStateRange As Range    ' Range for storing tickbox state information
+Private shpGrp As Shape               ' Grouped shape for both ticked and unticked states
+
+
+Private Const TickShapeName As String = "src_TickTemplate_Ticked"
+Private Const UntickShapeName As String = "src_TickTemplate_Unticked"
+
+'=============================================================================
+' Class Enums
+'==============================================================================
+Public Enum HAlign
+    hCenter = 1
+    hLeft = 2
+    hRight = 3
+End Enum
+
+Public Enum VAlign
+    vCenter = 1
+    vTop = 2
+    vBottom = 3
+End Enum
+
+'====================================
+' Class Initialize
+'====================================
+Private Sub Class_Initialize()
+    ' Initializes the class and sets up necessary objects and properties
+    
+    shpName = "cls_CustomTickbox_(**i**)"
+    Dim shtName As String
+    shtName = Replace(shpName, "**i**", "storeSht")
+    
+    On Error Resume Next
+    Set tickSht = ThisWorkbook.Worksheets(shtName)
+    On Error GoTo 0
+    If tickSht Is Nothing Then
+        With ThisWorkbook
+            Set tickSht = .Sheets.Add(After:=.Worksheets(.Worksheets.Count))
+            tickSht.Name = shtName
+        End With
+    End If
+    
+    With tickSht
+        .Visible = xlSheetVeryHidden
+        If .[A1].Value = "" Then
+            Set tickboxStateRange = .Range("A1")
+        Else
+            Set tickboxStateRange = .Cells(.[A1].CurrentRegion.Rows.Count + 1, 1)
+        End If
+    End With
+End Sub
+
+'==============================================================================
+' Public Methods
+'==============================================================================
+Public Sub Create(ByVal vTickedShape As Shape, ByVal vUntickedShape As Shape, _
+                        ByVal vCell As Range, ByVal vMacroName As String, _
+                        Optional ByVal hAlignment As HAlign = hCenter, Optional ByVal vAlignment As VAlign = vCenter)
+    '==========================================================================
+    ' USAGE:
+    ' CreateTick(tickShapeObject, untickShapeObject, Selection, "Tickbox_Click")
+    ' Optionally can adjust the alignment with:
+    '   Horizontal:
+    '       hCenter
+    '       hLeft
+    '       hRight
+    '   Vertical:
+    '       vCenter
+    '       vTop
+    '       vBottom
+    ' e.g. CreateTick(tickShapeObject, untickShapeObject, Selection, "Tickbox_Click", hLeft, vTop)
+    '==========================================================================
+    ' Creates a tickbox in the specified cell
+    Application.ScreenUpdating = False
+    ClearUnusedTickBoxes
+    SetReferenceCell vCell
+    If TickInCell Then
+        MsgBox "A tickbox already exists in this cell", vbInformation, "Error"
+        Exit Sub
+    End If
+    AssignTickShapes vTickedShape, vUntickedShape
+    If tickShp Is Nothing Or untickShp Is Nothing Then Exit Sub
+    SetMacroName vMacroName
+    PositionInCell hAlignment, vAlignment
+    StoreTick
+    Application.ScreenUpdating = True
+End Sub
+
+Public Sub Click(ByRef caller As String)
+    '==========================================================================
+    ' USAGE:
+    ' Click Application.Caller
+    '==========================================================================
+    ' Handles the click event on a tickbox, the click event should
+    ' be called from the modTickbox module, passing application.caller
+    ' to this sub.
+    
+    Application.ScreenUpdating = False
+    Dim callerGrp As String
+    callerGrp = Mid(caller, 1, InStrRev(caller, "_") - 1)
+    
+    Dim i As Long
+    For i = 1 To tickboxStateRange.CurrentRegion.Rows.Count
+        If tickSht.Range("C" & i).Value = callerGrp Then
+            With ThisWorkbook.Sheets(tickSht.Range("B" & i).Value)
+                Set refCell = .Range(tickSht.Range("A" & i).Value)
+                Set tickShp = .Shapes(callerGrp & "_Ticked")
+                Set untickShp = .Shapes(callerGrp & "_Unticked")
+            End With
+            Exit For
+        End If
+    Next i
+    
+    If tickShp.Visible = msoFalse Then
+        tickShp.Visible = msoTrue
+        untickShp.Visible = msoFalse
+        refCell.Value = True
+    Else
+        untickShp.Visible = msoTrue
+        tickShp.Visible = msoFalse
+        refCell.Value = False
+    End If
+    Application.ScreenUpdating = True
+End Sub
+
+'==============================================================================
+' Private Methods
+'==============================================================================
+Private Sub ClearUnusedTickBoxes()
+    ' Clears any unused tickboxes from the hidden worksheet
+    
+    Dim c As Range
+    Dim shp As Shape
+    Dim maxRows As Long
+    maxRows = tickSht.[A1].CurrentRegion.Columns(1).Cells.Count
+    Dim i As Long
+    On Error Resume Next
+    
+    For Each c In tickSht.[A1].CurrentRegion.Columns(1).Cells
+        Set shp = Nothing
+        Set shp = ThisWorkbook.Sheets(c.Offset(0, 1).Value).Shapes(c.Offset(0, 2).Value)
+        If shp Is Nothing Then c.Resize(1, 5).ClearContents
+    Next c
+    
+    For i = maxRows To 1 Step -1
+        Set c = tickSht.Range("A" & i)
+        If c.Value = "" And maxRows > 1 Then c.EntireRow.Delete
+    Next i
+    
+    On Error GoTo 0
+End Sub
+
+Private Sub StoreTick()
+    ' Stores the state of the tickbox on a hidden worksheet
+    ' this allows the tickbox to be operable again once the
+    ' worksheet is closed and reopened.  It also allows the
+    ' use of many tickboxes in the workbook.
+    
+    With tickboxStateRange
+        .Value = refCell.Address
+        .Offset(0, 1).Value = refCell.Worksheet.Name
+        .Offset(0, 2).Value = shpGrp.Name
+    End With
+End Sub
+
+Private Sub SetReferenceCell(ByVal vCell As Range)
+    ' Assigns the reference cell for the tickbox
+    Set refCell = vCell
+End Sub
+
+Private Sub SetMacroName(ByVal vMacroName As String)
+    ' Assigns the macro for the tickbox (in the modTickbox module), which should, in
+    ' turn, call the click sub from this class
+    shpGrp.OnAction = "'" & ActiveWorkbook.Name & "'!" & vMacroName
+End Sub
+
+Private Sub AssignTickShapes(ByVal vTickedShape As Shape, ByVal vUntickedShape As Shape)
+    ' Assigns shapes for ticked and unticked states
+    ' groups the shapes as necessary
+    
+    If vTickedShape.Type = msoGroup Then
+        Set tickShp = convertShapeToImage(vTickedShape)
+        Set untickShp = convertShapeToImage(vUntickedShape)
+    Else
+        Set tickShp = vTickedShape.Duplicate
+        Set untickShp = vUntickedShape.Duplicate
+    End If
+    
+    If tickShp Is Nothing Or untickShp Is Nothing Then Exit Sub
+    
+    
+    Dim tickboxIndex As Long
+    Dim shp As Shape
+    Dim sht As Worksheet
+    tickboxIndex = 0
+    
+    For Each sht In ActiveWorkbook.Sheets
+        For Each shp In sht.Shapes
+            If InStr(shp.Name, "cls_CustomTickbox_(") = 1 And shp.Type = msoGroup Then
+                If tickboxIndex < CInt(Split(Split(shp.Name, "(")(1), ")")(0)) Then
+                    tickboxIndex = CInt(Split(Split(shp.Name, "(")(1), ")")(0))
+                End If
+            End If
+        Next shp
+    Next sht
+    
+    tickboxIndex = tickboxIndex + 1
+    
+    tickShp.Name = Replace(shpName, "**i**", tickboxIndex) & "_Ticked"
+    untickShp.Name = Replace(shpName, "**i**", tickboxIndex) & "_Unticked"
+    
+    Set shpGrp = ActiveSheet.Shapes.Range(Array(tickShp.Name, untickShp.Name)).Group
+    shpGrp.Name = Replace(shpName, "**i**", tickboxIndex)
+End Sub
+
+Private Sub PositionInCell(ByVal hAlignment As HAlign, ByVal vAlignment As VAlign)
+    ' Positions the tickbox within the cell
+    ' horizontal and vertical alignment can be set, but tickbox is always set
+    ' to the size of the targer cell while keeping the tickbox square
+    
+    With refCell
+        If .Width > .Height Then
+            tickShp.Height = .Height
+            tickShp.Width = .Height
+            
+            untickShp.Height = .Height
+            untickShp.Width = .Height
+        Else
+            tickShp.Height = .Width
+            tickShp.Width = .Width
+            
+            untickShp.Height = .Width
+            untickShp.Width = .Width
+        End If
+    End With
+    
+    Select Case hAlignment
+        Case hCenter
+                tickShp.Left = refCell.Left + (refCell.Width - tickShp.Width) / 2
+                untickShp.Left = refCell.Left + (refCell.Width - untickShp.Width) / 2
+        Case hLeft
+                tickShp.Left = refCell.Left
+                untickShp.Left = refCell.Left
+        Case hRight
+                tickShp.Left = refCell.Left + (refCell.Width - tickShp.Width)
+                untickShp.Left = refCell.Left + (refCell.Width - untickShp.Width)
+    End Select
+    
+    Select Case vAlignment
+        Case vCenter
+                tickShp.Top = refCell.Top + ((refCell.Height - tickShp.Height) / 2) + 1
+                untickShp.Top = refCell.Top + ((refCell.Height - untickShp.Height) / 2) + 1
+        Case vTop
+                tickShp.Top = refCell.Top
+                untickShp.Top = refCell.Top
+        Case vBottom
+                tickShp.Top = refCell.Top + (refCell.Height - tickShp.Height)
+                untickShp.Top = refCell.Top + (refCell.Height - untickShp.Height)
+    End Select
+    
+    refCell.Font.Color = refCell.Interior.Color
+    tickShp.Visible = msoFalse
+    untickShp.Visible = msoTrue
+    refCell.Value = False
+End Sub
+
+'====================================
+' Public Functions
+'====================================
+Public Function CreateDefaultShape(ByRef WithTick As Boolean) As Shape
+    ' Creates and returns a default tickbox shape that the user can use if
+    ' they don't want to provide their own if the shape already exists, it
+    ' will return the existing shape instead
+    
+    If DefaultShapeExists Then
+        If WithTick Then
+            Set CreateDefaultShape = tickSht.Shapes(TickShapeName)
+        Else
+            Set CreateDefaultShape = tickSht.Shapes(UntickShapeName)
+        End If
+        Exit Function
+    End If
+    Dim outLineShp As Shape, interiorShp As Shape
+    Dim shpGrp As Shape
+    
+    Set outLineShp = tickSht.Shapes.AddShape(msoShapeRoundedRectangle, 0, 0, 48, 48)
+    
+    With outLineShp
+        .Top = 0
+        .Left = 0
+        .Adjustments.Item(1) = 0.12
+        .Line.Visible = msoFalse
+        .Fill.ForeColor.RGB = RGB(118, 118, 118)
+        .Name = "src_TickTemplate_Outline"
+    End With
+    
+    Set interiorShp = outLineShp.Duplicate
+    
+    With interiorShp
+        .Top = 0
+        .Left = 0
+        .Adjustments.Item(1) = 0.094
+        .ScaleWidth 0.914, msoFalse, msoScaleFromMiddle
+        .ScaleHeight 0.914, msoFalse, msoScaleFromMiddle
+        .Fill.ForeColor.RGB = RGB(255, 255, 255)
+        .Name = "src_TickTemplate_Empty"
+    End With
+    
+    If WithTick Then
+        Dim tickShp As Shape
+        With tickSht.Shapes.BuildFreeform(msoEditingAuto, 12.75, 22.312519685)
+            .AddNodes msoSegmentLine, msoEditingAuto, 8.062519685, 27.187480315
+            .AddNodes msoSegmentLine, msoEditingAuto, 20.437480315, 37.8750393701
+            .AddNodes msoSegmentLine, msoEditingAuto, 41.812519685, 12.187480315
+            .AddNodes msoSegmentLine, msoEditingAuto, 36.3750393701, 7.8750393701
+            .AddNodes msoSegmentLine, msoEditingAuto, 19.687480315, 28.5
+            .AddNodes msoSegmentLine, msoEditingAuto, 12.75, 22.312519685
+            .convertToShape.Select
+        End With
+        Set tickShp = tickSht.Shapes(tickSht.Shapes.Count)
+        With tickShp
+            .Line.Visible = msoFalse
+            .Fill.ForeColor.RGB = RGB(91, 155, 213)
+            .Name = "src_TickTemplate_Tick"
+        End With
+        outLineShp.Name = outLineShp.Name & "_HasTick"
+        interiorShp.Name = interiorShp.Name & "_HasTick"
+        Set shpGrp = tickSht.Shapes.Range(Array(outLineShp.Name, interiorShp.Name, tickShp.Name)).Group
+        shpGrp.Name = TickShapeName
+    Else
+        Set shpGrp = tickSht.Shapes.Range(Array(outLineShp.Name, interiorShp.Name)).Group
+        shpGrp.Name = UntickShapeName
+    End If
+    shpGrp.Placement = xlFreeFloating
+    shpGrp.Left = 500
+    shpGrp.Top = 0
+    
+    Set CreateDefaultShape = shpGrp
+End Function
+
+Private Function DefaultShapeExists() As Boolean
+    ' Checks if the default shape already exists
+    Dim uShp As Shape, tShp As Shape
+    On Error Resume Next
+        Set tShp = tickSht.Shapes(TickShapeName)
+        Set uShp = tickSht.Shapes(UntickShapeName)
+    On Error GoTo 0
+    DefaultShapeExists = Not (tShp Is Nothing Or uShp Is Nothing)
+End Function
+
+'====================================
+' Internal Functions
+'====================================
+Private Function convertShapeToImage(ByRef shp As Shape) As Shape
+    ' Converts a shape for groups to an image
+    ' This makes organising shapes easier by removing unneccesary groups
+    
+    Dim sh As Worksheet
+    Set sh = ActiveSheet
+    
+    Dim cht As ChartObject
+    Set cht = sh.ChartObjects.Add( _
+                Left:=ActiveCell.Left, _
+                Width:=1000, _
+                Top:=ActiveCell.Top, _
+                Height:=1000)
+                
+    cht.ShapeRange.Fill.Visible = msoFalse
+    cht.ShapeRange.Line.Visible = msoFalse
+    
+    shp.Copy
+    cht.Activate
+    ActiveChart.Paste
+    
+    If shp.Type = msoGroup Then
+        ActiveChart.Shapes(1).GroupItems(1).ParentGroup.Width = cht.Width
+        ActiveChart.Shapes(1).GroupItems(1).ParentGroup.Height = cht.Height
+    Else
+        ActiveChart.Shapes(1).Width = cht.Width
+        ActiveChart.Shapes(1).Height = cht.Height
+    End If
+    On Error GoTo errorhandler
+    Dim appdataDir As String
+    appdataDir = Environ("APPDATA") & "\TMP_" & shp.Name & ".png"
+    cht.Chart.Export appdataDir
+    cht.Delete
+    Dim newShp As Shape
+    Set newShp = sh.Shapes.AddPicture(appdataDir, _
+                    msoFalse, msoTrue, ActiveCell.Left, ActiveCell.Top, shp.Width, shp.Height)
+    newShp.Name = shp.Name
+    
+    On Error Resume Next
+    Kill appdataDir
+    On Error GoTo 0
+    
+    Set convertShapeToImage = newShp
+    Exit Function
+errorhandler:
+    MsgBox "Could not convert source shape (" & shp.Name & ") to an image.  Consider using static images instead of a group"
+    Set convertShapeToImage = Nothing
+End Function
+
+
+Private Function TickInCell() As Boolean
+    ' returns true if there's already a tickbox assigned to the selected cell
+    Dim c As Range
+    TickInCell = False
+    For Each c In tickSht.[A1].CurrentRegion.Columns(1).Cells
+        If c.Value = refCell.Address Then
+            TickInCell = True
+            Exit Function
+        End If
+    Next
+End Function
