@@ -68,6 +68,7 @@ If you want to use a custom shape or style for the tickboxes, then simply create
       Tickbox.Create tickShp, untickShp, targetCell, "Tickbox_Click"
     End Sub
     ```
+    ```
 
 ## Contributing
 
